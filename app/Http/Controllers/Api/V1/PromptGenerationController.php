@@ -1,8 +1,10 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Controller;
 use App\Http\Requests\GeneratePromptRequest;
+use App\Http\Resources\PromptGenerationResource;
 use App\Services\OpenAiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -10,7 +12,7 @@ use OpenAI\Exceptions\RateLimitException;
 use OpenAI\Exceptions\TransporterException;
 use Illuminate\Http\JsonResponse;
 
-class ImageGenerationController extends Controller
+class PromptGenerationController extends Controller
 {
     public function __construct(private OpenAiService $openAiService)
     {
@@ -20,7 +22,9 @@ class ImageGenerationController extends Controller
 
     public function index()
     {
-
+        $user = request()->user();
+        $promptGenerations = $user->imageGenerations()->latest()->paginate(10);
+        return PromptGenerationResource::collection($promptGenerations);
     }
 
     public function store(GeneratePromptRequest $request): JsonResponse
@@ -32,7 +36,7 @@ class ImageGenerationController extends Controller
             $originalName = $image->getClientOriginalName();
             $sanitizeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', pathinfo($originalName, PATHINFO_FILENAME));
             $extension = $image->getClientOriginalExtension();
-            $safeFilename = $sanitizeName . '_' . Str::random(10) . '.' . $extension;
+            $safeFilename = $sanitizeName . '_' . Str::random(32) . '.' . $extension;
 
             $imagePath = $image->storeAs('uploads/images', $safeFilename, 'public');
 
@@ -46,7 +50,7 @@ class ImageGenerationController extends Controller
                 'mime_type' => $image->getMimeType(),
             ]);
 
-            return response()->json($imageGeneration, 201);
+            return (new PromptGenerationResource($imageGeneration))->response();
         } catch (RateLimitException $e) {
             return response()->json([
                 'message' => 'OpenAI API rate limit exceeded. Please try again later.',
